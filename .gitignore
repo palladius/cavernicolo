@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+artifacts/traces/
+artifacts/grade_results/*.json
+artifacts/grade_results/*.html
+.google-agents-cli/
+out/

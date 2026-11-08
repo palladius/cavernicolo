@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""
+cavernicolo - Filtro Unix e Agente Cavernicolo carlessiano rude per risparmio token.
+
+Utilizzo come filtro Unix:
+  cat ARTICLE.md | cavernicolo
+  cavernicolo "Testo lungo da comprimere..."
+  cavernicolo file.txt
+  cavernicolo --eval
+"""
+
+import sys
+import os
+from pathlib import Path
+
+# Locate project root and venv
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python"
+
+# If not running inside the project's venv, re-exec with venv python if available
+if VENV_PYTHON.exists() and sys.executable != str(VENV_PYTHON):
+    os.execv(str(VENV_PYTHON), [str(VENV_PYTHON), __file__] + sys.argv[1:])
+
+# Load environment
+import dotenv
+env_file = PROJECT_ROOT / ".env"
+if env_file.exists():
+    dotenv.load_dotenv(str(env_file))
+
+# Fallback to .env.gprism if credentials missing
+gprism_env = Path.home() / "git" / "gic" / ".env.gprism"
+if gprism_env.exists():
+    dotenv.load_dotenv(str(gprism_env), override=False)
+
+import argparse
+import asyncio
+from google.genai import types
+from google.adk.runners import InMemoryRunner
+
+# Add project root to sys.path
+sys.path.insert(0, str(PROJECT_ROOT))
+from app.agent import root_agent
+
+
+async def run_cavernicolo(text: str) -> str:
+    runner = InMemoryRunner(agent=root_agent)
+    session = await runner.session_service.create_session(
+        app_name=runner.app_name, user_id="unix_pipe"
+    )
+    msg = types.Content(role="user", parts=[types.Part.from_text(text=text)])
+    
+    collected = []
+    async for event in runner.run_async(
+        user_id="unix_pipe", session_id=session.id, new_message=msg
+    ):
+        if event.content and event.content.parts:
+            for p in event.content.parts:
+                if p.text:
+                    collected.append(p.text)
+    return "".join(collected)
+
+
+def main():
+    if "--eval" in sys.argv:
+        # Run agents-cli evals
+        os.chdir(str(PROJECT_ROOT))
+        os.execvp("agents-cli", ["agents-cli", "eval", "run", "--dataset", "tests/eval/datasets/cavernicolo-dataset.json", "--config", "tests/eval/eval_config.yaml"])
+
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print(__doc__.strip(), file=sys.stderr)
+        sys.exit(0)
+
+    # Read input: from stdin pipe or from argument
+    input_text = ""
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+
+    if not sys.stdin.isatty():
+        # Input piped via stdin: cat FILE | cavernicolo
+        input_text = sys.stdin.read().strip()
+    elif args:
+        first_arg = args[0]
+        if os.path.isfile(first_arg):
+            with open(first_arg, "r", encoding="utf-8") as f:
+                input_text = f.read().strip()
+        else:
+            input_text = " ".join(args).strip()
+
+    if not input_text:
+        print("Errore: nessun input fornito a cavernicolo.", file=sys.stderr)
+        print("Uso: cat FILE | cavernicolo oppure cavernicolo 'testo da comprimere'", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        output = asyncio.run(run_cavernicolo(input_text))
+        print(output)
+    except Exception as e:
+        print(f"Cavernicolo ha sbattuto la clava: {e}", file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,38 @@
+metrics_to_run:
+  - custom_response_quality
+  - zero_politeness_check
+  - token_saving_check
+
+thresholds:
+  custom_response_quality: 4  # judge scores 1-5
+  zero_politeness_check: 4    # must not be polite
+  token_saving_check: 4       # must be terse
+
+custom_metrics:
+  - name: custom_response_quality
+    custom_function_file: response_quality.py
+
+  - name: zero_politeness_check
+    custom_function: |
+      def evaluate(instance):
+          resp = str(instance.get("response", "")).lower()
+          # Check for actual polite courtesies (not negation like 'non ringraziare')
+          polite_phrases = ["grazie a te", "ti ringrazio", "molte grazie", "grazie mille", "di nulla", "figurati", "buongiorno", "buonasera", "cordiali saluti", "a tua completa disposizione", "è un piacere aiutarti", "lieto di aiutarti"]
+          found = [w for w in polite_phrases if w in resp]
+          if found:
+              return {'score': 1, 'explanation': f'Trovati convenevoli vietati: {found}'}
+          return {'score': 5, 'explanation': 'Perfetto! Zero convenevoli o ringraziamenti da fighetti.'}
+
+  - name: token_saving_check
+    custom_function: |
+      def evaluate(instance):
+          resp = str(instance.get("response", "")).strip()
+          words = len(resp.split())
+          if words == 0:
+              return {'score': 1, 'explanation': 'Risposta vuota'}
+          if words < 45:
+              return {'score': 5, 'explanation': f'Super conciso ({words} parole)'}
+          elif words < 85:
+              return {'score': 4, 'explanation': f'Accettabile ({words} parole)'}
+          else:
+              return {'score': 2, 'explanation': f'Troppo verboso ({words} parole)'}
