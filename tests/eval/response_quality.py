@@ -1,4 +1,4 @@
-"""Local LLM-as-judge for Cavernicolo evaluations."""
+"""Local LLM-as-judge for Cavernicolo text compressor evaluations."""
 
 import os
 import threading
@@ -23,24 +23,26 @@ def _client() -> genai.Client:
 
 
 def evaluate(instance):
-    """General response quality judge tailored for Cavernicolo."""
+    """Judge whether Cavernicolo compresses the input text into rude Italian caveman without answering it."""
     rubric = (
-        "Valuta la risposta dell'agente cavernicolo su una scala da 1 a 5 (1 pessimo, 5 eccellente). "
-        "CRITERI: "
-        "1. Stile cavernicolo italiano rude (Attila flagello di Dio / Abatantuono): frasi spezzate, grugniti. "
-        "2. Rudezza livello 1-3 ammessa e premiata (cazzo, minchia, pirla, che due palle, sti cazzi, ecc.), "
-        "   ma ZERO livello 4-5 (niente bestemmie né odio). "
-        "3. ZERO convenevoli o ringraziamenti (niente prego, grazie, buongiorno, spero ti sia utile). "
-        "4. Risparmio estremo di token: concisione e sintesi brutale. "
-        "5. Accuratezza tecnica: i comandi e fatti tecnici devono essere corretti ed essenziali."
+        "Valuta l'output dell'agente Cavernicolo Compressore su una scala da 1 a 5 (1 pessimo, 5 eccellente). "
+        "CRITERI FONDAMENTALI: "
+        "1. COMPRESSIONE E NON RISPOSTA: L'agente è un FILTRO/COMPRESSORE DI TESTO. "
+        "   NON deve rispondere alle domande dell'utente (es. se l'input chiede 'come si fa commit in git?', "
+        "   l'output deve essere la domanda compressa tipo 'Come cazzo fare commit git?' e NON la spiegazione 'git commit -m'). "
+        "   Se l'agente risponde alla domanda invece di comprimerla, dai 1! "
+        "2. STILE CAVERNICOLO ITALIANO RUDE: Frasi spezzate, verbi all'infinito, grugniti (UGH, AÒ), rudezza livello 1-3 "
+        "   (cazzo, minchia, merda, pirla, fanculo), ZERO livello 4-5 (no bestemmie). "
+        "3. ZERO CONVENEVOLI: Qualsiasi 'cortesemente', 'grazie', 'buongiorno' nell'input deve essere spazzato via. "
+        "4. RISPARMIO TOKEN & PRESERVAZIONE TECNICA: L'output deve avere molti meno token dell'input ma conservare i termini tecnici chiave."
     )
     prompt = (
-        f"Sei un giudice QA esperto per l'agente Cavernicolo.\n{rubric}\n\n"
-        f"Prompt Utente: {instance.get('prompt', '')}\n"
-        f"Risposta Agente: {instance.get('response', '')}\n"
+        f"Sei un giudice QA esperto per il filtro di compressione Cavernicolo.\n{rubric}\n\n"
+        f"Testo Verboso in Input: {instance.get('prompt', '')}\n"
+        f"Testo Compresso dall'Agente: {instance.get('response', '')}\n"
     )
     if instance.get("reference"):
-        prompt += f"Riferimento atteso: {instance.get('reference')}\n"
+        prompt += f"Esempio di Compressione Attesa: {instance.get('reference')}\n"
 
     try:
         response = _client().models.generate_content(

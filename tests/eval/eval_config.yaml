@@ -1,12 +1,12 @@
 metrics_to_run:
   - custom_response_quality
   - zero_politeness_check
-  - token_saving_check
+  - compression_ratio_check
 
 thresholds:
   custom_response_quality: 4  # judge scores 1-5
-  zero_politeness_check: 4    # must not be polite
-  token_saving_check: 4       # must be terse
+  zero_politeness_check: 4    # must not retain polite fluff
+  compression_ratio_check: 4  # output must be shorter than input
 
 custom_metrics:
   - name: custom_response_quality
@@ -16,23 +16,30 @@ custom_metrics:
     custom_function: |
       def evaluate(instance):
           resp = str(instance.get("response", "")).lower()
-          # Check for actual polite courtesies (not negation like 'non ringraziare')
-          polite_phrases = ["grazie a te", "ti ringrazio", "molte grazie", "grazie mille", "di nulla", "figurati", "buongiorno", "buonasera", "cordiali saluti", "a tua completa disposizione", "è un piacere aiutarti", "lieto di aiutarti"]
+          polite_phrases = ["vorrei cortesemente", "vorrei gentilmente", "ti ringrazio", "molte grazie", "grazie mille", "buongiorno", "buonasera", "cordiali saluti", "carissimo"]
           found = [w for w in polite_phrases if w in resp]
           if found:
-              return {'score': 1, 'explanation': f'Trovati convenevoli vietati: {found}'}
-          return {'score': 5, 'explanation': 'Perfetto! Zero convenevoli o ringraziamenti da fighetti.'}
+              return {'score': 1, 'explanation': f'Convenevoli non rimossi: {found}'}
+          return {'score': 5, 'explanation': 'Perfetto! Convenevoli eliminati.'}
 
-  - name: token_saving_check
+  - name: compression_ratio_check
     custom_function: |
       def evaluate(instance):
-          resp = str(instance.get("response", "")).strip()
-          words = len(resp.split())
-          if words == 0:
-              return {'score': 1, 'explanation': 'Risposta vuota'}
-          if words < 45:
-              return {'score': 5, 'explanation': f'Super conciso ({words} parole)'}
-          elif words < 85:
-              return {'score': 4, 'explanation': f'Accettabile ({words} parole)'}
+          prompt_obj = instance.get("prompt", "")
+          if isinstance(prompt_obj, dict):
+              parts = prompt_obj.get("parts", [])
+              in_text = " ".join(p.get("text", "") for p in parts if isinstance(p, dict))
           else:
-              return {'score': 2, 'explanation': f'Troppo verboso ({words} parole)'}
+              in_text = str(prompt_obj)
+          out_text = str(instance.get("response", "")).strip()
+          in_words = max(1, len(in_text.split()))
+          out_words = len(out_text.split())
+          if out_words == 0:
+              return {'score': 1, 'explanation': 'Output vuoto'}
+          ratio = out_words / in_words
+          if ratio <= 0.65:
+              return {'score': 5, 'explanation': f'Ottima compressione: {in_words} -> {out_words} parole ({ratio:.0%})'}
+          elif ratio <= 0.85:
+              return {'score': 4, 'explanation': f'Buona compressione: {in_words} -> {out_words} parole ({ratio:.0%})'}
+          else:
+              return {'score': 2, 'explanation': f'Compressione insufficiente: {in_words} -> {out_words} parole ({ratio:.0%})'}
